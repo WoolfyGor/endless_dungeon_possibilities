@@ -1,9 +1,5 @@
-using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using Unity.Collections;
-using Unity.Jobs;
 using UnityEngine;
 
 public class DungeonController : MonoBehaviour
@@ -12,13 +8,31 @@ public class DungeonController : MonoBehaviour
     private int _height, _width, _rooms, _seed;
     [SerializeField]
     private Dungeon _dungeon;
-
+    public int Rooms => _rooms;
     List<GameObject> _spawnedTiles;
     [SerializeField]
     DungeonTile _tilePrefab;
+
+    public static DungeonController instance;
+    public Transform startPoint;
+    private void Awake()
+    {
+        if (instance == null) instance = this;
+        else Destroy(gameObject);
+       
+    }
+
     private void Start()
     {
-       _dungeon = new Dungeon(_height, _width, _rooms, _seed);
+        _dungeon = new Dungeon(_height, _width, _rooms, _seed);
+        SpawnDungeon();
+        GameController.instance.ResetGame();
+    }
+
+    public void GenerateRandomDungeon()
+    {
+        _dungeon.ChangeData(_height, _width, _rooms, UnityEngine.Random.Range(0, 10000));
+        _dungeon.BuildDungeonScheme();
         SpawnDungeon();
     }
     [ContextMenu("Перестроить схему подземелья")]
@@ -26,6 +40,15 @@ public class DungeonController : MonoBehaviour
     {
         _dungeon.ChangeData(_height, _width, _rooms, _seed);
         _dungeon.BuildDungeonScheme();
+    }
+    public void UpdateDungeonExternal(int h, int w, int r, int s)
+    {
+        _height = h;
+        _width = w;
+        _rooms = r;
+        _seed = s;
+        UpdateDungeon();
+        SpawnDungeon();
     }
     [ContextMenu("Перестроить модели подземелья")]
     void SpawnDungeon()
@@ -39,8 +62,34 @@ public class DungeonController : MonoBehaviour
             var g = Instantiate(_tilePrefab, transform);
             g.SetupTile(tile, schema);
             _spawnedTiles.Add(g.gameObject);
+            if (schema[tile.Y, tile.X] == "S")
+                startPoint = g.transform;
+        }
+
+        CenterDungeon();
+        GameController.instance.SetPlayerSpawn(startPoint.position);
+    }
+    private void CenterDungeon()
+    {
+        if (_spawnedTiles.Count == 0) return;
+
+        // 1. Находим среднюю точку всех комнат
+        Vector3 center = Vector3.zero;
+        foreach (GameObject room in _spawnedTiles)
+        {
+            center += room.transform.position;
+        }
+        center /= _spawnedTiles.Count;
+
+        // 2. Сдвигаем все комнаты так, чтобы центр совпал с позицией главного объекта
+        Vector3 offset = transform.position - center;
+
+        foreach (GameObject room in _spawnedTiles)
+        {
+            room.transform.position += offset;
         }
     }
+
     void ClearDungeon()
     {
         if (_spawnedTiles == null || _spawnedTiles.Count == 0)
@@ -69,7 +118,7 @@ public class Dungeon
     private int _contentLootCount;
     private int _seed;
 
-    private System.Random _dungeonRandomized;
+    public static System.Random dungeonRandomized;
     private string _dungeonMap;
     public Dungeon(int width, int height, int contentLootCount, int seed = 0)
     {
@@ -84,6 +133,7 @@ public class Dungeon
     {
         return _dungeonScheme;
     }
+    public RoomCoordinate GetStartPos => _dungeonStart;
     public RoomCoordinate[] GetDungeonTiles()
     {
         var rooms = new List<RoomCoordinate>();
@@ -104,9 +154,9 @@ public class Dungeon
     public void BuildDungeonScheme()
     {
         if (_seed != 0)
-            _dungeonRandomized = new System.Random(_seed);
+            dungeonRandomized = new System.Random(_seed);
         else
-            _dungeonRandomized = new System.Random();
+            dungeonRandomized = new System.Random();
 
 
         _dungeonScheme = new string[_height,_width];
@@ -164,7 +214,7 @@ public class Dungeon
             int nx = x + dx;
             int ny = y + dy;
 
-            if (_dungeonScheme[ny, nx] == null && _dungeonRandomized.NextDouble() < 0.2)
+            if (_dungeonScheme[ny, nx] == null && dungeonRandomized.NextDouble() < 0.2)
             {
                 _dungeonScheme[ny, nx] = ".";
                 _hallways.Add(new RoomCoordinate(nx, ny));
@@ -176,8 +226,8 @@ public class Dungeon
         bool isPlaced = false;
         while (!isPlaced)
         {
-            int randomX = _dungeonRandomized.Next(1, _width - 2);
-            int randomY = _dungeonRandomized.Next(1, _height - 2);
+            int randomX = dungeonRandomized.Next(1, _width - 2);
+            int randomY = dungeonRandomized.Next(1, _height - 2);
             RoomCoordinate candidate = new RoomCoordinate(randomX, randomY);
 
             bool nearContent = false;
@@ -206,67 +256,78 @@ public class Dungeon
     }
 
 
-    private void FillContentRooms()
+    private int FillContentRooms()
     {
+        int maxAttemptsPerRoom = 50; // можно подстроить при необходимости
+        int placedRooms = 0;
+
         for (int i = 0; i < _contentLootCount; i++)
         {
             bool isPlaced = false;
-            while (!isPlaced)
-            {
-                // Можно избегать крайних ячеек, если не нужны комнаты на границе
-                int randomX = _dungeonRandomized.Next(1, _width - 1);
-                int randomY = _dungeonRandomized.Next(1, _height - 1);
+            int attempts = 0;
 
-                // Если ячейка уже занята (например, коридором, стеной или другой комнатой), пропускаем
+            while (!isPlaced && attempts < maxAttemptsPerRoom)
+            {
+                attempts++;
+
+                int randomX = dungeonRandomized.Next(1, _width - 1);
+                int randomY = dungeonRandomized.Next(1, _height - 1);
+
+                // Ячейка уже занята
                 if (_dungeonScheme[randomY, randomX] != null)
                     continue;
 
                 RoomCoordinate candidate = new RoomCoordinate(randomX, randomY);
 
-                // Если это первая комната, размещаем её без дополнительных проверок
                 if (i == 0)
                 {
                     _dungeonScheme[randomY, randomX] = "C";
                     _rooms[i] = candidate;
                     isPlaced = true;
+                    placedRooms++;
                 }
                 else
                 {
-                    bool adjacentViolation = false; // комната слишком близко (1 ячейка)
-                    bool withinRange = false;        // хотя бы одна комната находится в пределах 5 ячеек
+                    bool adjacentViolation = false;
+                    bool withinRange = false;
 
-                    // Проверяем все уже размещенные комнаты
                     for (int j = 0; j < i; j++)
                     {
                         int dx = Math.Abs(candidate.X - _rooms[j].X);
                         int dy = Math.Abs(candidate.Y - _rooms[j].Y);
                         int chebDistance = Math.Max(dx, dy);
 
-                        // Если комната находится рядом (включая диагональ), нельзя ставить candidate
                         if (chebDistance <= 1)
                         {
                             adjacentViolation = true;
                             break;
                         }
-                        // Если хоть одна комната расположена на расстоянии не более 5, значит кандидат привязан к кластеру
+
                         if (chebDistance <= 5)
                         {
                             withinRange = true;
                         }
                     }
 
-                    // Если кандидат удовлетворяет условиям, размещаем его:
-                    // - Не должно быть соседей (adjacentViolation == false)
-                    // - И хотя бы одна комната из уже поставленных находится в пределах 5 ячеек (withinRange == true)
                     if (!adjacentViolation && withinRange)
                     {
                         _dungeonScheme[randomY, randomX] = "C";
                         _rooms[i] = candidate;
                         isPlaced = true;
+                        placedRooms++;
                     }
                 }
             }
+
+            // Если не удалось разместить комнату — выходим из цикла
+            if (!isPlaced)
+            {
+                Debug.LogWarning($"Не удалось разместить комнату #{i + 1} из {_contentLootCount} после {maxAttemptsPerRoom} попыток.");
+                break;
+            }
         }
+
+        return placedRooms;
     }
 
 
