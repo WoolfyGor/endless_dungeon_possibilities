@@ -148,10 +148,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a49d9db31f004d149b7bff39ad02f751, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _height: 10
-  _width: 10
+  _height: 20
+  _width: 20
   _rooms: 5
   _seed: 5
+  _dungeon:
+    _rooms: []
+    _dungeonStart:
+      X: 0
+      Y: 0
+    _hallways: []
+  _tilePrefab: {fileID: 3302192280078041498, guid: da7aa053d8ecc604d91cf50da4425626, type: 3}
 --- !u!4 &119486701
 Transform:
   m_ObjectHideFlags: 0
