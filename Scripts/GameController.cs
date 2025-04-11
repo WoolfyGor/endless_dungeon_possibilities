@@ -17,12 +17,18 @@ public class GameController : MonoBehaviour
     [SerializeField]
     Camera _fullCamera;
 
+    [SerializeField]
+    CanvasGroup _settingsCanvas;
+
     private void Awake()
     {
         if (instance == null) instance = this;
         else Destroy(gameObject);
     }
-
+    private void Start()
+    {
+        SwitchPause();
+    }
     private void Update()
     {
         if (Input.GetKeyDown(KeyCode.R))
@@ -35,14 +41,18 @@ public class GameController : MonoBehaviour
             _uiController.GenerateByParams();
             ResetGame();
         }
-        if (Input.GetKeyDown(KeyCode.P))
-        {
-            _playerController.SwitchPause();
-        }
+
         if (Input.GetKeyDown(KeyCode.F))
         {
-            _fullCamera.enabled = !_fullCamera.enabled;
+            SwitchPause();
         }
+    }
+
+    private void SwitchPause()
+    {
+        _fullCamera.enabled = !_fullCamera.enabled;
+        _playerController.SwitchPause();
+        _settingsCanvas.gameObject.SetActive(!_settingsCanvas.gameObject.activeSelf);
     }
     public void SetPlayerSpawn(Vector3 position)
     {

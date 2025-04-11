@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 
 public class DungeonController : MonoBehaviour
 {
@@ -12,6 +14,8 @@ public class DungeonController : MonoBehaviour
     List<GameObject> _spawnedTiles;
     [SerializeField]
     DungeonTile _tilePrefab;
+    [SerializeField]
+    NavMeshSurface _surface;
 
     public static DungeonController instance;
     public Transform startPoint;
@@ -66,14 +70,20 @@ public class DungeonController : MonoBehaviour
                 startPoint = g.transform;
         }
 
+
         CenterDungeon();
+        
+        NavMesh.RemoveAllNavMeshData();
+
+        _surface.BuildNavMesh();
+        
         GameController.instance.SetPlayerSpawn(startPoint.position);
+
     }
     private void CenterDungeon()
     {
         if (_spawnedTiles.Count == 0) return;
 
-        // 1. Находим среднюю точку всех комнат
         Vector3 center = Vector3.zero;
         foreach (GameObject room in _spawnedTiles)
         {
@@ -81,7 +91,6 @@ public class DungeonController : MonoBehaviour
         }
         center /= _spawnedTiles.Count;
 
-        // 2. Сдвигаем все комнаты так, чтобы центр совпал с позицией главного объекта
         Vector3 offset = transform.position - center;
 
         foreach (GameObject room in _spawnedTiles)
@@ -167,7 +176,13 @@ public class Dungeon
         ConnectStartToContent();
         FillSidePassages();
         FillEmptyTiles();
-        PrintDungeon();
+        //PrintDungeon();
+        PrintDungeonInfo();
+    }
+
+    private void PrintDungeonInfo()
+    {
+        Debug.Log($"{_width} | {_height} |{_seed}|{_contentLootCount}");
     }
 
     private void FillEmptyTiles()
@@ -309,7 +324,7 @@ public class Dungeon
                         }
                     }
 
-                    if (!adjacentViolation && withinRange)
+                    if (!adjacentViolation && withinRange )
                     {
                         _dungeonScheme[randomY, randomX] = "C";
                         _rooms[i] = candidate;
